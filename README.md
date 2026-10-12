@@ -8,7 +8,7 @@
 
 ## Содержание проекта
 
-* `test_cases.json` - тест-кейсы для проверки API.
+* `test_cases_aitrsiner_server.json` - тест-кейсы для проверки API.
 * `postman_collection.json` - коллекция запросов Postman.
 * `bug_reports.json` - обнаруженные баги.
 * `sql/data_validation.sql` - шаблоны SQL-проверок данных после API-запросов.
