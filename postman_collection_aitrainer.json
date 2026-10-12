@@ -1,0 +1,678 @@
+{
+  "info": {
+    "_postman_id": "bc3d7564-fb3c-44de-9759-a6f23f9dbf01",
+    "name": "AITrainerServer — API QA Collection",
+    "description": "Коллекция Postman для функциональной и негативной проверки API AITrainerServer. Используйте запущенный экземпляр API и изолированную тестовую базу. Некоторые сценарии предназначены для проверки обработки ошибочных данных и граничных условий.\n\nBase URL из настроек запуска проекта: http://192.168.203.151:60225. В профиле также указаны https://192.168.203.151:60224 и http://192.168.203.151:60226. При запуске на другом компьютере укажите адрес своего экземпляра API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Generate workout — valid",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/generate"
+        },
+        "description": "POST /api/Workout/generate. MuscleGroups сопоставляется с полем muscle_groups таблицы workout_exercises.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dayOfWeek\": \"Monday\",\n  \"muscleGroups\": [\n    \"Ноги\"\n  ],\n  \"durationMinutes\": 45,\n  \"difficulty\": \"medium\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Ответ содержит массив exercises', () => pm.expect(json.exercises).to.be.an('array'));",
+              "if (Array.isArray(json.exercises)) {",
+              "  pm.test('Каждое упражнение содержит id и name', () => json.exercises.forEach(e => { pm.expect(e).to.have.property('id'); pm.expect(e).to.have.property('name'); }));",
+              "  pm.test('Средняя сложность задаёт 3 подхода', () => json.exercises.forEach(e => pm.expect(e.sets).to.eql(3)));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Generate workout — empty muscleGroups (defect repro)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/generate"
+        },
+        "description": "Негативный тест: текущий код обращается к MuscleGroups[0] без проверки пустого списка; тест ожидаемо может упасть на текущей реализации.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dayOfWeek\": \"Monday\",\n  \"muscleGroups\": [],\n  \"durationMinutes\": 45,\n  \"difficulty\": \"medium\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Ожидаемый контракт: HTTP 400 для пустого списка', () => pm.response.to.have.status(400));",
+              "pm.test('Сервер не возвращает необработанную ошибку 500', () => pm.expect(pm.response.code).to.not.eql(500));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Generate workout — multiple muscle groups (defect repro)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/generate"
+        },
+        "description": "Негативный/регрессионный тест: текущая реализация фильтрует упражнения только по первому элементу списка.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dayOfWeek\": \"Monday\",\n  \"muscleGroups\": [\n    \"Ноги\",\n    \"Спина\"\n  ],\n  \"durationMinutes\": 45,\n  \"difficulty\": \"medium\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('Ответ корректно сформирован', () => pm.expect(j.exercises).to.be.an('array'));",
+              "pm.test('Должны учитываться обе переданные группы мышц', () => {",
+              "  const groups = (j.exercises || []).map(e => String(e.muscleGroups || '').toLowerCase()).join(' ');",
+              "  pm.expect(groups).to.include('спина');",
+              "  pm.expect(groups).to.match(/ноги|ягодиц|бедра/);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register — create unique test user",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/register"
+        },
+        "description": "Создаёт уникального тестового пользователя. Проверки отсутствия пароля и положительного ID специально обнаруживают текущие дефекты регистрации.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runEmail}}\",\n  \"username\": \"Postman QA\",\n  \"password\": \"{{runPassword}}\",\n  \"age\": 25,\n  \"weight\": 75,\n  \"height\": 180,\n  \"gender\": \"male\",\n  \"fitnessLevel\": \"intermediate\",\n  \"primaryGoal\": \"improve strength\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const email = 'qa.postman.' + Date.now() + '@example.com';",
+              "pm.collectionVariables.set('runEmail', email);",
+              "pm.collectionVariables.set('runEmailEncoded', encodeURIComponent(email));",
+              "pm.collectionVariables.set('runPassword', 'QA_Test_Pass_2026!');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 для новой регистрации', () => pm.response.to.have.status(200));",
+              "const txt = pm.response.text();",
+              "pm.test('Пароль не должен возвращаться в ответе', () => pm.expect(txt).to.not.include(pm.collectionVariables.get('runPassword')));",
+              "let j = {}; try { j = pm.response.json(); } catch (e) {}",
+              "pm.test('Успешный ответ должен возвращать корректный ID', () => pm.expect(j.id).to.be.a('number').and.to.be.above(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register — duplicate email (run after Register)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/register"
+        },
+        "description": "Выполнять после первого успешного запроса Register с тем же runEmail.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runEmail}}\",\n  \"username\": \"Postman QA\",\n  \"password\": \"{{runPassword}}\",\n  \"age\": 25,\n  \"weight\": 75,\n  \"height\": 180,\n  \"gender\": \"male\",\n  \"fitnessLevel\": \"intermediate\",\n  \"primaryGoal\": \"improve strength\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Дубликат email возвращает HTTP 409', () => pm.response.to.have.status(409));",
+              "const j = pm.response.json();",
+              "pm.test('Ответ содержит error', () => pm.expect(j).to.have.property('error'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login — registered test user",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/login"
+        },
+        "description": "Зависит от выполненного запроса Register. Текущая реализация возвращает LoginDto с исходным Password.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runEmail}}\",\n  \"password\": \"{{runPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Успешный вход возвращает HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Ответ не должен содержать пароль', () => pm.expect(pm.response.text()).to.not.include(pm.collectionVariables.get('runPassword')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login — wrong password (defect repro)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/login"
+        },
+        "description": "Нынешний код контроллера отвечает HTTP 200 текстом при неверных учётных данных.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runEmail}}\",\n  \"password\": \"DefinitelyWrong_QA_Pass!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Неверные учётные данные возвращают 4xx', () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403]));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check email — known test user",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/check"
+        },
+        "description": "Важно: endpoint принимает JSON-строку в теле, а не объект { email: ... }.",
+        "body": {
+          "mode": "raw",
+          "raw": "\"{{seedEmail}}\"",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('Существующий email отмечен exists=true', () => pm.expect(j.exists).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check email — unregistered email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/check"
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "\"\\\"qa.not.registered@example.com\\\"\"",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('Свободный email отмечен exists=false', () => pm.expect(j.exists).to.eql(false));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create workout — seeded user",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/create"
+        },
+        "description": "Мутационный тест: создаёт тренировку для userId=1, который присутствует в приложенном SQL-дампе.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": 1,\n  \"title\": \"Postman QA workout {{runStamp}}\",\n  \"description\": \"Created by Postman collection\",\n  \"date\": \"2026-10-11T10:00:00\",\n  \"muscleGroups\": [\n    \"Ноги\"\n  ],\n  \"durationMinutes\": 45,\n  \"difficulty\": \"medium\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('runStamp', new Date().toISOString().replace(/[:.]/g, '-'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('Ответ содержит положительный id тренировки', () => pm.expect(j.id).to.be.a('number').and.to.be.above(0));",
+              "if (j.id) pm.collectionVariables.set('createdWorkoutId', String(j.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get workout dates — seeded user",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/dates/1"
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Тело ответа — массив', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get exercises — created workout",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/exercises/{{createdWorkoutId}}"
+        },
+        "description": "Выполнять после Create workout; использует сохранённый createdWorkoutId."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Тело ответа — массив', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get user data — newly registered user",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/user/{{runEmailEncoded}}"
+        },
+        "description": "Email в path URL-кодируется перед подстановкой. Сохраняет действительный ID из БД, так как registration-response сейчас может отдавать id=0."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('Ответ содержит данные профиля', () => { pm.expect(j).to.have.property('email'); pm.expect(j).to.have.property('id'); });",
+              "pm.collectionVariables.set('registeredUserId', String(j.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update user data — newly registered user",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/user/{{runEmailEncoded}}"
+        },
+        "description": "Выполнять после Get user data — newly registered user.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"{{registeredUserId}}\",\n  \"email\": \"{{runEmail}}\",\n  \"username\": \"Postman QA Updated\",\n  \"height\": 181,\n  \"weight\": 76,\n  \"age\": 26,\n  \"gender\": \"male\",\n  \"goal\": \"improve strength\",\n  \"fitnessLevel\": \"intermediate\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('Обновлённое имя профиля возвращается', () => pm.expect(j.username).to.eql('Postman QA Updated'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update user data — invalid age 121",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/user/{{runEmailEncoded}}"
+        },
+        "description": "Негативная проверка валидации профиля.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"{{registeredUserId}}\",\n  \"email\": \"{{runEmail}}\",\n  \"username\": \"Postman QA Updated\",\n  \"height\": 181,\n  \"weight\": 76,\n  \"age\": 121,\n  \"gender\": \"male\",\n  \"goal\": \"improve strength\",\n  \"fitnessLevel\": \"intermediate\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Возраст 121 отклоняется с HTTP 400', () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get user data — missing email",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/user/not.exists%40example.com"
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Неизвестный пользователь возвращает HTTP 400', () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get workout dates — unknown user",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/dates/2147483000"
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Неизвестный пользователь возвращает HTTP 400', () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get exercises — unknown workout",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/Workout/exercises/2147483000"
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Неизвестная тренировка возвращает HTTP 400', () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://192.168.203.151:60225",
+      "type": "string",
+      "description": "IP и порт взяты из AITrainerServer/Properties/launchSettings.json (профиль AITrainerServer). Если API запущен на другом устройстве/сети, адрес может отличаться."
+    },
+    {
+      "key": "seedEmail",
+      "value": "user1@example.com",
+      "type": "string"
+    },
+    {
+      "key": "seedPassword",
+      "value": "hashed_password_1",
+      "type": "string"
+    },
+    {
+      "key": "runEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "runEmailEncoded",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "runPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "registeredUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "createdWorkoutId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "runStamp",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
